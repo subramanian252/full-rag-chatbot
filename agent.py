@@ -4,7 +4,7 @@ import certifi
 
 from langgraph.graph import MessagesState, END, StateGraph
 from langchain_core.messages import SystemMessage
-from langchain_openai import ChatOpenAI
+from usage import UsageChatOpenAI
 from langgraph.prebuilt import ToolNode, tools_condition
 
 
@@ -71,10 +71,11 @@ def build_agent(model_name:str = "openai/gpt-4o"):
         model_name = DEFAULT_MODEL
 
 
-    llm = ChatOpenAI(
+    llm = UsageChatOpenAI(
         api_key=os.getenv("OPENROUTER_API_KEY"),
         base_url="https://openrouter.ai/api/v1",
         model=model_name,              
+        stream_usage=True,
     )
 
     llm_with_tools = llm.bind_tools(get_exported_tools())

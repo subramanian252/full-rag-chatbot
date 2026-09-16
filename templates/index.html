@@ -3,10 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FastAPI App</title>
+    <title>LazyChat — Build the frontend</title>
+    <style>
+        body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f9f9f5; color: #282d27; font: 16px/1.7 system-ui, sans-serif; }
+        main { max-width: 560px; padding: 32px; }
+        h1 { font-size: 40px; letter-spacing: -2px; }
+        pre { padding: 22px; background: #222721; color: #d3ed95; border-radius: 14px; overflow: auto; }
+    </style>
 </head>
 <body>
-    <h1>Hello from FastAPI</h1>
-    <p>This HTML page is being served from the / endpoint.</p>
+    <main>
+        <h1>lazychat.</h1>
+        <p>Your backend is running. Build the frontend once to open your workspace:</p>
+        <pre>cd frontend
+npm ci
+npm run build</pre>
+        <p>Then refresh this page. For frontend development, use <code>npm run dev</code> and open the address Vite prints.</p>
+    </main>
 </body>
 </html>

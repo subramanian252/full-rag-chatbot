@@ -8,7 +8,8 @@ import math
 from rag import rag_retriever
 from langgraph.types import interrupt
 
-from database import save_memory, search_memory
+from database import save_memory, search_memory as search_memory_in_db
+from langchain_core.runnables import RunnableConfig
 
 load_dotenv()   
 
@@ -25,25 +26,27 @@ def set_current_thread(thread_id: str):
 
 
 @tool
-def save_memory_to_db(memory: str) -> str:
+def save_memory_to_db(memory: str, config: RunnableConfig) -> str:
     """Save a memory to the database for the current thread. this is long term memory storage."""
-    if not current_thread_id:
+    thread_id = config.get("configurable", {}).get("thread_id")
+    if not thread_id:
         return "Error: No thread ID set. Please set the thread ID first."
     
-    save_memory(current_thread_id, memory)
+    save_memory(thread_id, memory)
     return f"Memory saved: {memory}"
 
 @tool
-def search_memory(query: str = "") -> str:
+def search_memory(config: RunnableConfig, query: str = "") -> str:
     """Search for memories in the database for the current thread."""
-    if not current_thread_id:
+    thread_id = config.get("configurable", {}).get("thread_id")
+    if not thread_id:
         return "Error: No thread ID set. Please set the thread ID first."
     
-    memories = search_memory(current_thread_id)
+    memories = search_memory_in_db(thread_id)
     if not memories:
         return "No memories found."
     
-    return "\n".join(memories)
+    return memories
 
 
 @tool
@@ -185,16 +188,17 @@ def get_weather(city: str) -> str:
         return f"Unexpected weather data format: {str(e)}"
 
 @tool
-def retriever_tool_func(query:str) -> str:
+def retriever_tool_func(query: str, config: RunnableConfig) -> str:
     """Search the documents uploaded in the current conversation.
 
     Use this tool whenever the user asks a question
     about an uploaded PDF or document."""
-    if current_thread_id is None:
+    thread_id = config.get("configurable", {}).get("thread_id")
+    if not thread_id:
         return "Error: No thread ID set. Please set the thread ID first."
     
     try:
-        return rag_retriever(query, current_thread_id)
+        return rag_retriever(query, thread_id)
     except FileNotFoundError:
         return "Error: Document not found for this thread. Please upload a document first."
     except Exception as e:

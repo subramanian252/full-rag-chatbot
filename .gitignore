@@ -53,3 +53,10 @@ htmlcov/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Frontend dependencies and generated output
+node_modules/
+*.tsbuildinfo
+/frontend/dist/
+/test-results/
+/playwright-report/

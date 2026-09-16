@@ -6,6 +6,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pathlib import Path
 import docx2txt
+from langchain_core.documents import Document
 
 
 load_dotenv()
@@ -25,10 +26,24 @@ def add_document_to_rag(thread_id: str, file_path: str):
         documents = pypdf_file.load()
     elif suffix in [".txt", ".md", ".csv"]:
         text = path.read_text(encoding="utf-8", errors="ignore")
-        documents = [text]
+        documents = [
+            Document(
+                page_content=text,
+                metadata={
+                    "source": str(path)
+                }
+            )
+        ]
     elif suffix == ".docx":
         text = docx2txt.process(file_path)
-        documents = [text]
+        documents = [
+            Document(
+                page_content=text,
+                metadata={
+                    "source": str(path)
+                }
+            )
+        ]
     else:
         raise ValueError("Only PDF, TXT, MD, CSV, and DOCX files are supported")
 

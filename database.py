@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 Path("data").mkdir(exist_ok=True)
@@ -50,6 +50,44 @@ class LongTermMemory(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc)
     )
+
+
+class MessageUsage(Base):
+    """Additive table: existing chat rows and schemas stay intact."""
+    __tablename__ = "message_usage"
+
+    id = Column(Integer, primary_key=True)
+    thread_id = Column(String, index=True, nullable=False)
+    message_id = Column(Integer, unique=True, nullable=False)
+    model = Column(String, nullable=False)
+    usage = Column(JSON, nullable=False)
+
+
+def save_message_usage(thread_id: str, message_id: int, model: str, usage: dict):
+    with SessionLocal() as db:
+        db.add(MessageUsage(thread_id=thread_id, message_id=message_id, model=model, usage=usage))
+        db.commit()
+
+
+def get_usage_records(thread_id: str | None = None):
+    with SessionLocal() as db:
+        query = db.query(MessageUsage)
+        if thread_id is not None:
+            query = query.filter(MessageUsage.thread_id == thread_id)
+        return query.all()
+
+
+def summarize_usage(records):
+    from decimal import Decimal
+
+    usages = [record.usage for record in records]
+    costs = [Decimal(str(usage["cost_usd"])) for usage in usages if usage.get("cost_usd") is not None]
+    return {
+        **{key: sum(usage.get(key, 0) for usage in usages)
+           for key in ("input_tokens", "output_tokens", "total_tokens", "measured_calls", "missing_calls")},
+        "cost_usd": float(sum(costs)) if costs else None,
+        "cost_complete": bool(usages) and all(usage.get("cost_complete", False) for usage in usages),
+    }
 
 def init_db():
     Base.metadata.create_all(bind=engine)
