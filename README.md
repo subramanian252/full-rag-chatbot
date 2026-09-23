@@ -1,12 +1,12 @@
 # LazyChat
 
-LazyChat is a single-user AI engineering portfolio application built with FastAPI, LangGraph, React, Neon Postgres, Pinecone, and OpenRouter. It demonstrates streaming chat, visible tool calls, document retrieval, provider-reported usage, durable checkpoints, and human approval before a simulated stock purchase.
+LazyChat is a single-user AI engineering portfolio application built with FastAPI, LangGraph, React, Amazon RDS for PostgreSQL, Pinecone, and OpenRouter. It demonstrates streaming chat, visible tool calls, document retrieval, provider-reported usage, durable checkpoints, and human approval before a simulated stock purchase.
 
 ## Features
 
 - Streams model output from FastAPI to React with server-sent events.
 - Supports multiple OpenRouter chat models without exposing API keys to the browser.
-- Stores conversations, messages, usage, memories, and LangGraph checkpoints in Neon.
+- Stores conversations, messages, usage, memories, and LangGraph checkpoints in Amazon RDS for PostgreSQL.
 - Stores document embeddings in a conversation-specific Pinecone namespace.
 - Restores pending human approvals from the saved LangGraph checkpoint after a reload.
 - Shows tool arguments, results, token totals, and reported cost in the interface.
@@ -14,18 +14,13 @@ LazyChat is a single-user AI engineering portfolio application built with FastAP
 
 The stock-purchase tool is a simulation and never places a real trade.
 
-## Authorship
-
-- Backend, project concept, and supervision: Subramanian
-- Frontend design and implementation: AI-assisted under Subramanian's supervision
-
 ## Project structure
 
 ```text
 app.py                 FastAPI entrypoint and API routes
 agent.py               LangGraph agent, prompt, and model allowlist
-database.py            Neon-backed application data
-memory.py              Neon-backed LangGraph checkpoints
+database.py            RDS PostgreSQL-backed application data
+memory.py              RDS PostgreSQL-backed LangGraph checkpoints
 rag.py                 Pinecone document ingestion and retrieval
 tools.py               Agent tools and HITL demonstration
 usage.py               Provider usage collection
@@ -42,14 +37,14 @@ Copy `.env.example` to `.env` for local development and fill in the values. Do n
 
 | Variable | Purpose |
 | --- | --- |
-| `EXTERNAL_DATABASE_URL` | Neon Postgres connection string for application data and checkpoints |
+| `EXTERNAL_DATABASE_URL` | Amazon RDS PostgreSQL connection string for application data and checkpoints |
 | `OPENROUTER_API_KEY` | Chat completions and document embeddings |
 | `PINECONE_DB` | Pinecone API key |
 | `TAVILY_API_KEY` | Web-search tool |
 | `OPENWEATHER_API_KEY` | Optional current-weather tool |
 | `ALPHAVANTAGE_API_KEY` | Optional stock-price tool |
 
-For Vercel, use Neon's pooled connection string and configure every required value in the project's Environment Variables settings.
+Configure every required value in the Vercel project's Environment Variables settings. The RDS instance must accept TLS connections from the deployed application.
 
 The Pinecone index is named `llmrag` and uses 1,536-dimensional cosine vectors. The application creates it in AWS `us-east-1` when it does not already exist.
 
@@ -127,4 +122,4 @@ npm --prefix frontend run build
 
 ## Deployment boundary
 
-This is intentionally a single-user demonstration without authentication. Durable state is externalized to Neon and Pinecone, but the in-process overlap guard is instance-local and is not a distributed lock. Add authentication, per-user ownership, rate limiting, and a distributed request lock before turning it into a multi-user service.
+This is intentionally a single-user demonstration without authentication. Durable state is externalized to Amazon RDS for PostgreSQL and Pinecone, but the in-process overlap guard is instance-local and is not a distributed lock. Add authentication, per-user ownership, rate limiting, and a distributed request lock before turning it into a multi-user service.
