@@ -48,7 +48,7 @@ def get_vectorstore(thread_id: str):
 
 
 
-def add_document_to_rag(thread_id: str, file_name: str, file_bytes:bytes):
+async def add_document_to_rag(thread_id: str, file_name: str, file_bytes:bytes):
 
     path = Path(file_name)
     suffix = path.suffix.lower()
@@ -92,7 +92,7 @@ def add_document_to_rag(thread_id: str, file_name: str, file_bytes:bytes):
 
         vectorstore = get_vectorstore(thread_id)
 
-        vectorstore.add_documents(documents)
+        await vectorstore.aadd_documents(documents)
 
         return "Vector store created successfully"
     finally:

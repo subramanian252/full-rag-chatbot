@@ -143,7 +143,7 @@ async def upload_file(file: UploadFile = File(...), thread_id: str = ""):
 
         file_bytes = b"".join(chunks)
 
-        await run_in_threadpool(add_document_to_rag, thread_id, filename, file_bytes)
+        await add_document_to_rag(thread_id, filename, file_bytes)
 
         create_or_update_conversation(thread_id, "Uploaded document")
 
