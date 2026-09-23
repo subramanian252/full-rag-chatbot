@@ -1,4 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "fluid": true
+  "fluid": true,
+  "functions": {
+    "app.py": {
+      "includeFiles": "public/**",
+      "maxDuration": 300
+    }
+  }
 }

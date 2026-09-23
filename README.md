@@ -81,7 +81,7 @@ vercel
 vercel --prod
 ```
 
-`vercel.json` enables Fluid compute, while `.vercelignore` keeps local and development files out of the deployment.
+`vercel.json` enables Fluid compute and includes the generated frontend in the FastAPI Function, while `.vercelignore` keeps local and development files out of the deployment.
 
 Vercel Functions accept request bodies up to 4.5 MB, so LazyChat enforces a 4 MB document limit to leave room for multipart encoding. Uploaded bytes are sent to Pinecone after parsing; no durable upload directory is used.
 
