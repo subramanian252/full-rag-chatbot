@@ -3,11 +3,28 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON
 from sqlalchemy.orm import declarative_base, sessionmaker
+import os
+from langgraph.checkpoint.postgres import PostgresSaver
 
-Path("data").mkdir(exist_ok=True)
-DATABASE_URL = "sqlite:///data/chatbot_memory.db"
+from dotenv import load_dotenv
+load_dotenv()
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+DATABASE_URL = os.getenv("EXTERNAL_DATABASE_URL")
+
+if not DATABASE_URL:
+    raise ValueError("EXTERNAL_DATABASE_URL environment variable is not set")
+
+if "sslmode=" not in DATABASE_URL:
+    sep = "&" if "?" in DATABASE_URL else "?"
+    DATABASE_URL += f"{sep}sslmode=require"
+
+SQLALCHEMY_DATABASE_URL = DATABASE_URL.replace(
+    "postgresql://",
+    "postgresql+psycopg://",
+    1,
+)
+
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()

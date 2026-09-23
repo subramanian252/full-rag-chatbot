@@ -1,22 +1,34 @@
-import sqlite3
 import os
 from pathlib import Path
 
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.postgres import PostgresSaver
 
 from dotenv import load_dotenv
 
+
 load_dotenv()
 
+def get_database_url():
 
-data_directory = Path(os.getenv("CHATBOT_DATA_DIR", "."))
-data_directory.mkdir(parents=True, exist_ok=True)
-checkpoint_path = data_directory / "checkpointer.db"
+    database_url = os.getenv("EXTERNAL_DATABASE_URL")
 
-memory = SqliteSaver(
-    sqlite3.connect(checkpoint_path, check_same_thread=False)
-)
+    if not database_url:
+        raise ValueError(
+            "EXTERNAL_DATABASE_URL environment variable is not set"
+        )
 
+    if "sslmode=" not in database_url:
+        sep = "&" if "?" in database_url else "?"
+        database_url += f"{sep}sslmode=require"
+
+    return database_url
+
+
+memory_context = PostgresSaver.from_conn_string(get_database_url())
+
+memory = memory_context.__enter__()
+
+memory.setup()
 
 def get_all_threads():
     all_threads = []
