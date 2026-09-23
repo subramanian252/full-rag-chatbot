@@ -12,6 +12,7 @@ def get_database_url():
 
     database_url = os.getenv("EXTERNAL_DATABASE_URL")
 
+
     if not database_url:
         raise ValueError(
             "EXTERNAL_DATABASE_URL environment variable is not set"
@@ -20,6 +21,7 @@ def get_database_url():
     if "sslmode=" not in database_url:
         sep = "&" if "?" in database_url else "?"
         database_url += f"{sep}sslmode=require"
+
 
     return database_url
 

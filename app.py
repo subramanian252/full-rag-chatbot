@@ -2,13 +2,11 @@ import json
 import logging
 from pathlib import Path
 from threading import Lock
-from uuid import uuid4
 
 import uvicorn
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
 from langgraph.types import Command
 from pydantic import BaseModel, Field
@@ -16,7 +14,8 @@ from starlette.concurrency import run_in_threadpool
 
 from agent import ALLOWED_MODELS, get_agent
 from database import (
-    create_or_update_conversation, get_chat_history, get_usage_records, init_db,
+    create_or_update_conversation, get_chat_history, get_usage_records,
+    get_workspace_usage_summary, init_db,
     list_conversations, save_chat_message, save_message_usage, summarize_usage,
 )
 from rag import add_document_to_rag
@@ -25,11 +24,8 @@ from usage import TurnUsage
 app = FastAPI(title="LazyChat", version="1.0.0")
 logger = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parent
-FRONTEND = ROOT / "frontend" / "dist"
-Path("uploads").mkdir(exist_ok=True)
-Path("data").mkdir(exist_ok=True)
+FRONTEND = ROOT / "public"
 init_db()
-templates = Jinja2Templates(directory=str(ROOT / "templates"))
 app.mount("/assets", StaticFiles(directory=str(FRONTEND / "assets"), check_dir=False), name="assets")
 
 # One Uvicorn worker: protect a conversation's checkpoint and index from overlap.
@@ -53,15 +49,18 @@ def release_thread(thread_id):
 
 
 @app.get("/")
-def read_root(request: Request):
+def read_root():
     if (FRONTEND / "index.html").exists():
         return FileResponse(FRONTEND / "index.html")
-    return templates.TemplateResponse(request=request, name="index.html")
+    return JSONResponse(
+        status_code=503,
+        content={"error": "Frontend build not found. Run npm --prefix frontend run build."},
+    )
 
 
 @app.get("/favicon.svg")
 def favicon():
-    return FileResponse(ROOT / "frontend" / "public" / "favicon.svg", media_type="image/svg+xml")
+    return FileResponse(FRONTEND / "favicon.svg", media_type="image/svg+xml")
 
 
 @app.get("/models")
@@ -71,7 +70,10 @@ def models():
         "openai/gpt-4o-mini": ("GPT-4o mini", "Small, quick, and capable"),
         "openai/gpt-4-turbo": ("GPT-4 Turbo", "For a deeper dive"),
         "openai/gpt-3.5-turbo": ("GPT-3.5 Turbo", "For everyday questions"),
-        "google/gemini-2.0-flash-exp": ("Gemini 2.0 Flash", "An experimental perspective"),
+        "google/gemini-3.1-flash-lite": ("Gemini 3.1 Flash Lite", "Fast, efficient, and tool-ready"),
+        "qwen/qwen3-30b-a3b-instruct-2507": ("Qwen3 30B A3B", "Low-cost agent and document work"),
+        "mistralai/mistral-small-3.2-24b-instruct": ("Mistral Small 3.2", "Affordable and reliable tool use"),
+        "deepseek/deepseek-chat-v3.1": ("DeepSeek V3.1", "Budget reasoning and coding"),
     }
     return {"models": [{"id": model, "name": descriptions.get(model, (model, ""))[0],
                         "description": descriptions.get(model, (model, ""))[1]} for model in ALLOWED_MODELS]}
@@ -86,7 +88,7 @@ def get_conversations():
 
 @app.get("/usage")
 def workspace_usage():
-    return {"summary": summarize_usage(get_usage_records())}
+    return {"summary": get_workspace_usage_summary()}
 
 
 @app.get("/chat/{thread_id}")
@@ -99,20 +101,9 @@ def chat_history(thread_id: str):
         messages.append({"id": message.id, "role": message.role, "content": message.content,
                          "created_at": message.created_at, "usage": record.usage if record else None,
                          "model": record.model if record else None})
-    import re
-    document = None
-    if re.fullmatch(r"[A-Za-z0-9_-]{1,128}", thread_id):
-        metadata_path = Path("uploads") / f"{thread_id}.json"
-        if metadata_path.exists():
-            try:
-                document = json.loads(metadata_path.read_text(encoding="utf-8")).get("name")
-            except (OSError, ValueError):
-                pass
-        elif (Path("faiss") / f"FAISS_{thread_id}").exists():
-            document = "Previously uploaded document"
     model = max(records, key=lambda record: record.id).model if records else "openai/gpt-4o"
     interrupts = pending_interrupts(get_agent(model), thread_id)
-    return {"messages": messages, "usage": summarize_usage(records), "document": document,
+    return {"messages": messages, "usage": summarize_usage(records),
             "interrupts": interrupts}
 
 
@@ -125,35 +116,44 @@ def pending_interrupts(graph, thread_id):
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...), thread_id: str = ""):
     claim_thread(thread_id)
-    staging = None
+
     try:
-        suffix = Path(file.filename or "").suffix.lower()
+        filename = file.filename or "uploaded_file"
+        suffix = Path(filename).suffix.lower()
+
         if suffix not in {".pdf", ".txt", ".md", ".csv", ".docx"}:
             raise HTTPException(400, "Choose a PDF, TXT, Markdown, CSV, or DOCX document.")
-        staging = Path("uploads") / f"{thread_id}-{uuid4().hex}{suffix}"
+
         size = 0
-        with staging.open("wb") as destination:
-            while chunk := await file.read(1024 * 1024):
-                size += len(chunk)
-                if size > 20 * 1024 * 1024:
-                    raise HTTPException(413, "Choose a document under 20 MB.")
-                destination.write(chunk)
+        chunks=[]
+
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+
+            if size > 4 * 1024 * 1024:
+                raise HTTPException(
+                    413,
+                    "Choose a document under 4 MB.",
+                )
+
+            chunks.append(chunk)
+
         if size == 0:
             raise HTTPException(400, "This document is empty.")
-        await run_in_threadpool(add_document_to_rag, thread_id, str(staging))
-        final_path = Path("uploads") / f"{thread_id}{suffix}"
-        staging.replace(final_path)
-        (Path("uploads") / f"{thread_id}.json").write_text(json.dumps({"name": file.filename}), encoding="utf-8")
+
+        file_bytes = b"".join(chunks)
+
+        await run_in_threadpool(add_document_to_rag, thread_id, filename, file_bytes)
+
         create_or_update_conversation(thread_id, "Uploaded document")
-        return {"message": "Document ready", "file_path": str(final_path), "name": file.filename}
+
+        return {"message": "Document ready", "name": filename}
     except HTTPException:
         raise
     except Exception:
         logger.exception("Document processing failed")
         return JSONResponse(status_code=500, content={"error": "We couldn't process this document. Check the file and your embedding provider configuration, then try again."})
     finally:
-        if staging and staging.exists():
-            staging.unlink()
         await file.close()
         release_thread(thread_id)
 

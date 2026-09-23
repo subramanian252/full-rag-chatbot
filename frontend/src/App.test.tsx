@@ -98,6 +98,11 @@ describe("workspace interactions", () => {
   it("sends a real request shape, renders Markdown, and shows measured usage", async () => {
     const user = userEvent.setup();
     render(<App />);
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(([url]) => url === "/usage"),
+      ).toHaveLength(1),
+    );
     await user.type(
       screen.getByRole("textbox", { name: "Message LazyChat" }),
       "Hello there",
@@ -108,6 +113,17 @@ describe("workspace interactions", () => {
     await user.click(screen.getByRole("button", { name: /^100 tokens/ }));
     expect(screen.getByLabelText("Conversation usage")).toBeTruthy();
     expect(window.location.search).toContain("chat=");
+    expect(
+      fetchMock.mock.calls.filter(([url]) => url === "/conversations"),
+    ).toHaveLength(1);
+    expect(
+      fetchMock.mock.calls.filter(([url]) => url === "/usage"),
+    ).toHaveLength(1);
+    expect(
+      fetchMock.mock.calls.filter(
+        ([url]) => url.startsWith("/chat/") && url !== "/chat/stream",
+      ),
+    ).toHaveLength(0);
   });
 
   it("restores saved history and starts a clean new conversation", async () => {
@@ -151,14 +167,19 @@ describe("workspace interactions", () => {
       container.querySelector("input[type=file]") as HTMLInputElement,
       file,
     );
-    await screen.findByText("notes.txt");
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("textbox", {
+            name: "Message LazyChat",
+          }) as HTMLTextAreaElement
+        ).value,
+      ).toContain("summary"),
+    );
     expect(
-      (
-        screen.getByRole("textbox", {
-          name: "Message LazyChat",
-        }) as HTMLTextAreaElement
-      ).value,
-    ).toContain("summary");
+      await screen.findByText("notes.txt uploaded successfully"),
+    ).toBeTruthy();
+    expect(screen.queryByText("Ready to chat")).toBeNull();
     expect(
       fetchMock.mock.calls.some(([url]) =>
         url.startsWith("/upload?thread_id="),

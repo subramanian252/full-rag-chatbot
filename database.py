@@ -1,7 +1,10 @@
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, JSON
+from sqlalchemy import (
+    JSON, Column, DateTime, Integer, String, Text, case, create_engine, func,
+    select,
+)
 from sqlalchemy.orm import declarative_base, sessionmaker
 import os
 from langgraph.checkpoint.postgres import PostgresSaver
@@ -92,6 +95,48 @@ def get_usage_records(thread_id: str | None = None):
         if thread_id is not None:
             query = query.filter(MessageUsage.thread_id == thread_id)
         return query.all()
+
+
+def get_workspace_usage_summary():
+    """Aggregate workspace usage in the database instead of loading every row."""
+    usage = MessageUsage.usage
+    statement = select(
+        func.count(MessageUsage.id).label("record_count"),
+        func.coalesce(func.sum(usage["input_tokens"].as_integer()), 0)
+        .label("input_tokens"),
+        func.coalesce(func.sum(usage["output_tokens"].as_integer()), 0)
+        .label("output_tokens"),
+        func.coalesce(func.sum(usage["total_tokens"].as_integer()), 0)
+        .label("total_tokens"),
+        func.coalesce(func.sum(usage["measured_calls"].as_integer()), 0)
+        .label("measured_calls"),
+        func.coalesce(func.sum(usage["missing_calls"].as_integer()), 0)
+        .label("missing_calls"),
+        func.sum(usage["cost_usd"].as_float()).label("cost_usd"),
+        func.coalesce(
+            func.sum(
+                case(
+                    (usage["cost_complete"].as_boolean().is_(True), 1),
+                    else_=0,
+                )
+            ),
+            0,
+        ).label("complete_records"),
+    )
+
+    with SessionLocal() as db:
+        row = db.execute(statement).one()
+
+    record_count = row.record_count
+    return {
+        "input_tokens": row.input_tokens,
+        "output_tokens": row.output_tokens,
+        "total_tokens": row.total_tokens,
+        "measured_calls": row.measured_calls,
+        "missing_calls": row.missing_calls,
+        "cost_usd": float(row.cost_usd) if row.cost_usd is not None else None,
+        "cost_complete": record_count > 0 and row.complete_records == record_count,
+    }
 
 
 def summarize_usage(records):

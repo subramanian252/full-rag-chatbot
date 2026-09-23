@@ -88,7 +88,55 @@ const initialModels: Model[] = [
     name: "GPT-4o mini",
     description: "Small, quick, and capable",
   },
+  {
+    id: "google/gemini-3.1-flash-lite",
+    name: "Gemini 3.1 Flash Lite",
+    description: "Fast, efficient, and tool-ready",
+  },
+  {
+    id: "qwen/qwen3-30b-a3b-instruct-2507",
+    name: "Qwen3 30B A3B",
+    description: "Low-cost agent and document work",
+  },
+  {
+    id: "mistralai/mistral-small-3.2-24b-instruct",
+    name: "Mistral Small 3.2",
+    description: "Affordable and reliable tool use",
+  },
+  {
+    id: "deepseek/deepseek-chat-v3.1",
+    name: "DeepSeek V3.1",
+    description: "Budget reasoning and coding",
+  },
 ];
+
+function conversationTitle(message: string) {
+  const title = message.slice(0, 40);
+  return message.length > 40 ? `${title}...` : title;
+}
+
+function addUsageSummary(current: Usage, turn: Usage): Usage {
+  const hasCurrentUsage =
+    current.total_tokens > 0 ||
+    current.measured_calls > 0 ||
+    current.missing_calls > 0 ||
+    current.cost_usd !== null;
+  const cost =
+    current.cost_usd === null && turn.cost_usd === null
+      ? null
+      : (current.cost_usd || 0) + (turn.cost_usd || 0);
+
+  return {
+    input_tokens: current.input_tokens + turn.input_tokens,
+    output_tokens: current.output_tokens + turn.output_tokens,
+    total_tokens: current.total_tokens + turn.total_tokens,
+    measured_calls: current.measured_calls + turn.measured_calls,
+    missing_calls: current.missing_calls + turn.missing_calls,
+    cost_usd: cost,
+    cost_complete:
+      (hasCurrentUsage ? current.cost_complete : true) && turn.cost_complete,
+  };
+}
 
 function Mark({ small = false }: { small?: boolean }) {
   return (
@@ -226,7 +274,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [documentName, setDocumentName] = useState<string | null>(null);
+  const [uploadedDocument, setUploadedDocument] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingInterrupt[]>([]);
   const [usage, setUsage] = useState<Usage>(emptyUsage);
   const [allUsage, setAllUsage] = useState<Usage>(emptyUsage);
@@ -255,7 +303,7 @@ export default function App() {
   const current = conversations.find((item) => item.thread_id === thread);
   const locked = busy || uploading || loading;
 
-  async function refresh() {
+  async function refreshConversations() {
     try {
       const data = await request<{ conversations: Conversation[] }>(
         "/conversations",
@@ -265,9 +313,30 @@ export default function App() {
     } catch {
       setListError(true);
     }
-    request<{ summary: Usage }>("/usage")
-      .then((data) => setAllUsage(data.summary))
-      .catch(() => {});
+  }
+  async function refreshWorkspaceUsage() {
+    try {
+      const data = await request<{ summary: Usage }>("/usage");
+      setAllUsage(data.summary);
+    } catch {
+      // Workspace usage is supplemental; keep the last known summary.
+    }
+  }
+  async function refresh() {
+    await Promise.all([refreshConversations(), refreshWorkspaceUsage()]);
+  }
+  function markConversationUpdated(threadId: string, firstMessage?: string) {
+    setConversations((previous) => {
+      const existing = previous.find((item) => item.thread_id === threadId);
+      const updated = {
+        thread_id: threadId,
+        title:
+          existing?.title ||
+          (firstMessage ? conversationTitle(firstMessage) : "New Conversation"),
+        updated_at: new Date().toISOString(),
+      };
+      return [updated, ...previous.filter((item) => item.thread_id !== threadId)];
+    });
   }
   useEffect(() => {
     refresh();
@@ -313,6 +382,11 @@ export default function App() {
       inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 160)}px`;
     }
   }, [draft]);
+  useEffect(() => {
+    if (!uploadedDocument) return;
+    const timer = window.setTimeout(() => setUploadedDocument(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [uploadedDocument]);
 
   function newChat() {
     if (locked) return;
@@ -322,7 +396,7 @@ export default function App() {
     setThread(id);
     setMessages([]);
     setUsage(emptyUsage);
-    setDocumentName(null);
+    setUploadedDocument(null);
     setPending([]);
     setDraft("");
     setError("");
@@ -341,14 +415,13 @@ export default function App() {
     setError("");
     setDraft("");
     setMessages([]);
-    setDocumentName(null);
+    setUploadedDocument(null);
     setPending([]);
     setUsage(emptyUsage);
     try {
       const data = await request<{
         messages: Message[];
         usage: Usage;
-        document: string | null;
         interrupts?: PendingInterrupt[];
       }>(`/chat/${encodeURIComponent(id)}`);
       if (activeThread.current !== id) return;
@@ -360,7 +433,6 @@ export default function App() {
         })),
       );
       setUsage(data.usage || emptyUsage);
-      setDocumentName(data.document);
       setPending(data.interrupts || []);
       nearBottom.current = true;
       const lastModel = [...data.messages]
@@ -379,11 +451,12 @@ export default function App() {
       setError("Choose a PDF, TXT, Markdown, CSV, or DOCX document.");
       return;
     }
-    if (file.size > 20 * 1024 * 1024) {
-      setError("That file is a little large. Choose a document under 20 MB.");
+    if (file.size > 4 * 1024 * 1024) {
+      setError("That file is a little large. Choose a document under 4 MB.");
       return;
     }
     setUploading(true);
+    setUploadedDocument(null);
     setError("");
     const body = new FormData();
     body.append("file", file);
@@ -392,13 +465,13 @@ export default function App() {
         method: "POST",
         body,
       });
-      setDocumentName(file.name);
+      setUploadedDocument(file.name);
       setDraft(
         (value) =>
           value ||
           "Give me a clear summary of this document and its key takeaways.",
       );
-      refresh();
+      refreshConversations();
       inputRef.current?.focus();
     } catch (err) {
       setError((err as Error).message);
@@ -497,7 +570,12 @@ export default function App() {
             },
           ]);
           if (event.thread_usage) setUsage(event.thread_usage);
+          if (event.usage)
+            setAllUsage((currentUsage) =>
+              addUsageSummary(currentUsage, event.usage as Usage),
+            );
           setPending(event.interrupts || []);
+          markConversationUpdated(thread, decision ? undefined : text);
         }
       });
       if (!finished)
@@ -513,18 +591,8 @@ export default function App() {
       if (!answer && !decision) setDraft(text);
     } finally {
       setBusy(false);
-      refresh();
       inputRef.current?.focus();
-      request<{ usage: Usage; interrupts?: PendingInterrupt[] }>(
-        `/chat/${encodeURIComponent(thread)}`,
-      )
-        .then((data) => {
-          if (activeThread.current === thread) {
-            setUsage(data.usage || emptyUsage);
-            setPending(data.interrupts || []);
-          }
-        })
-        .catch(() => {});
+      if (!finished) refresh();
     }
   }
   async function copy(text: string, index: number) {
@@ -730,7 +798,7 @@ export default function App() {
               <div className="drop-zone">
                 <Paperclip size={38} />
                 <h2>Drop a little knowledge.</h2>
-                <p>PDF, TXT, Markdown, CSV, or DOCX · up to 20 MB</p>
+                <p>PDF, TXT, Markdown, CSV, or DOCX · up to 4 MB</p>
               </div>
             )}
             <div
@@ -1000,21 +1068,23 @@ export default function App() {
                   send();
                 }}
               >
-                {(documentName || uploading) && (
-                  <div className="attachment">
+                {(uploading || uploadedDocument) && (
+                  <div
+                    className={`attachment ${uploadedDocument ? "is-success" : ""}`}
+                    role="status"
+                    aria-live="polite"
+                    aria-label="Document upload status"
+                  >
                     {uploading ? (
                       <Loader2 size={16} className="spin" />
                     ) : (
-                      <FileText size={16} />
+                      <Check size={16} />
                     )}
                     <span>
-                      {uploading ? "Reading your document…" : documentName}
+                      {uploading
+                        ? `Reading ${fileRef.current?.files?.[0]?.name || "your document"}…`
+                        : `${uploadedDocument} uploaded successfully`}
                     </span>
-                    {!uploading && (
-                      <span className="attachment-ready">
-                        <Check size={12} /> Ready to chat
-                      </span>
-                    )}
                   </div>
                 )}
                 <label htmlFor="message-input" className="sr-only">

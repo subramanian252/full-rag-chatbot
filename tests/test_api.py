@@ -220,12 +220,13 @@ class ApiTests(unittest.TestCase):
                             self.assertEqual(len(calls), 2)
                             self.assertNotIn(thread, self.app_module.active_threads)
 
-    def test_upload_formats_and_metadata(self):
+    def test_upload_formats_without_local_metadata(self):
         with patch.object(self.app_module, "add_document_to_rag") as add:
             response = self.client.post('/upload?thread_id=upload-test', files={"file": ("notes.txt", b'A useful note.', 'text/plain')})
             self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json(), {"message": "Document ready", "name": "notes.txt"})
             add.assert_called_once()
-        self.assertEqual(self.client.get('/chat/upload-test').json()["document"], "notes.txt")
+        self.assertNotIn("document", self.client.get('/chat/upload-test').json())
         self.assertEqual(self.client.post('/upload?thread_id=bad-file', files={"file": ("code.exe", b'no')}).status_code, 400)
         self.assertEqual(self.client.post('/upload?thread_id=empty-file', files={"file": ("empty.txt", b'')}).status_code, 400)
         self.assertNotIn("empty-file", self.app_module.active_threads)
@@ -249,12 +250,18 @@ class ApiTests(unittest.TestCase):
 
     def test_text_loader_builds_document_objects(self):
         import rag
-        path = Path('uploads/plain.txt')
-        path.write_text('A document about a calm workspace.', encoding='utf-8')
-        with patch.object(rag.FAISS, 'from_documents') as create:
-            rag.add_document_to_rag('loader-test', str(path))
-            documents = create.call_args.args[0]
+        with patch.object(rag, 'get_vectorstore') as get_vectorstore, \
+             patch.object(rag, 'wait_until_queryable') as wait_until_queryable:
+            vectorstore = get_vectorstore.return_value
+            vectorstore.add_documents.return_value = ['vector-id']
+            rag.add_document_to_rag(
+                'loader-test',
+                'plain.txt',
+                b'A document about a calm workspace.',
+            )
+            documents = vectorstore.add_documents.call_args.args[0]
             self.assertEqual(documents[0].page_content, 'A document about a calm workspace.')
+            wait_until_queryable.assert_called_once_with('loader-test', 'vector-id')
 
 
 if __name__ == '__main__':

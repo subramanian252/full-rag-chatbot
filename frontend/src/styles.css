@@ -936,6 +936,76 @@ button:hover:not(:disabled) {
   font-size: 12px;
   white-space: nowrap;
 }
+.attachment.is-success {
+  border-color: #b9cca5;
+  background: #edf5e6;
+  color: #50713e;
+}
+.approval-stack {
+  width: min(840px, 100%);
+  align-self: center;
+  padding: 18px 28px 32px;
+}
+.approval-card {
+  width: 100%;
+}
+.approval-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.approval-eyebrow > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.approval-card h3 {
+  margin: 18px 0 10px;
+}
+.approval-card p {
+  margin: 0;
+  line-height: 1.6;
+}
+.approval-action {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 15px 0 10px;
+}
+.approval-action code {
+  padding: 3px 6px;
+  border-radius: 5px;
+}
+.approval-explanation {
+  margin-top: 10px !important;
+}
+.approval-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 11px;
+  margin-top: 18px;
+}
+.approval-buttons button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 9px;
+  padding: 0 18px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s,
+    opacity 0.15s;
+}
+.approval-buttons button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
 .drop-zone {
   position: absolute;
   inset: 15px;

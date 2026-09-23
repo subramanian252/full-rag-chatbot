@@ -85,7 +85,11 @@ def get_stock_price(symbol: str) -> str:
 
 @tool
 def buy_stocks(symbol: str, quantity: int) -> str:
-    """Buy stocks for a given symbol and quantity. this is a placeholder tool for demonstration purposes."""
+    """Request a simulated stock purchase when its ticker and quantity are known.
+
+    Call this tool immediately instead of asking the user to confirm in chat. The
+    tool pauses execution and presents the approval request itself.
+    """
     decision = interrupt({
         "message": "Approve stock purchase (yes/no)?",
         "symbol": symbol,
@@ -199,8 +203,6 @@ def retriever_tool_func(query: str, config: RunnableConfig) -> str:
     
     try:
         return rag_retriever(query, thread_id)
-    except FileNotFoundError:
-        return "Error: Document not found for this thread. Please upload a document first."
     except Exception as e:
         return f"Error retrieving from document: {str(e)}"
 
